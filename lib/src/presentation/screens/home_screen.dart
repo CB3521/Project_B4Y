@@ -1255,6 +1255,23 @@ class _RouteMapPanel extends ConsumerWidget {
     final visibleStopMarkers = mode == HomeContentMode.tourist
         ? _visibleStopMarkersFor(routeLines, center)
         : const <_VisibleStopMarker>[];
+    final mapStopMarkers = visibleStopMarkers.length > 120
+        ? [
+            ...visibleStopMarkers.where((marker) => marker.spot != null),
+            ...visibleStopMarkers
+                .where((marker) => marker.spot == null)
+                .take(1),
+          ]
+        : visibleStopMarkers;
+    // The FlutterMap fallback becomes expensive when every stop gets a full
+    // shadowed widget. Keep it focused on useful landmarks instead of building
+    // dozens of labels at once.
+    final fallbackStopMarkers = mode == HomeContentMode.tourist
+        ? [
+            for (final marker in mapStopMarkers)
+              if (marker.spot != null) marker,
+          ].take(24).toList()
+        : const <_VisibleStopMarker>[];
     final contentMarkers = <KakaoMapMarker>[];
     final segmentTargets =
         <
@@ -1515,7 +1532,7 @@ class _RouteMapPanel extends ConsumerWidget {
                     height: 48,
                     child: const _SelectedLocationMarker(),
                   ),
-                for (final marker in visibleStopMarkers)
+                for (final marker in fallbackStopMarkers)
                   Marker(
                     point: marker.position,
                     width: 176,
@@ -1877,7 +1894,10 @@ List<_VisibleStopMarker> _visibleStopMarkersFor(
       routeNumbersByStopId
           .putIfAbsent(stop.id, () => {})
           .add(line.overlay.route.number);
-      final position = _nearestPointOnRoute(stop.position, line.overlay.shape);
+      // Stop coordinates are already the authoritative map positions. The
+      // previous nearest-point projection scanned the complete route shape for
+      // every stop on every rebuild.
+      final position = stop.position;
       final spot = line.overlay.touristSpotByStopId[stop.id];
       if (spot != null) {
         addMarker(stop, position, line.color, spot);
@@ -1944,45 +1964,6 @@ String _routeNumberLabel(List<String> routeNumbers) {
   return hiddenCount > 0
       ? '${visible.join(', ')} 외 $hiddenCount'
       : visible.join(', ');
-}
-
-LatLng _nearestPointOnRoute(LatLng point, List<LatLng> shape) {
-  final validShape = shape.where(isValidMapPoint).toList();
-  if (validShape.isEmpty) {
-    return point;
-  }
-  if (validShape.length == 1) {
-    return validShape.first;
-  }
-
-  var nearest = validShape.first;
-  var nearestSquaredDistance = double.infinity;
-  for (var index = 0; index < validShape.length - 1; index += 1) {
-    final start = validShape[index];
-    final end = validShape[index + 1];
-    final deltaLat = end.latitude - start.latitude;
-    final deltaLng = end.longitude - start.longitude;
-    final segmentLengthSquared = deltaLat * deltaLat + deltaLng * deltaLng;
-    final projection = segmentLengthSquared == 0
-        ? 0.0
-        : (((point.latitude - start.latitude) * deltaLat +
-                      (point.longitude - start.longitude) * deltaLng) /
-                  segmentLengthSquared)
-              .clamp(0.0, 1.0);
-    final candidate = LatLng(
-      start.latitude + deltaLat * projection,
-      start.longitude + deltaLng * projection,
-    );
-    final distanceLat = point.latitude - candidate.latitude;
-    final distanceLng = point.longitude - candidate.longitude;
-    final squaredDistance =
-        distanceLat * distanceLat + distanceLng * distanceLng;
-    if (squaredDistance < nearestSquaredDistance) {
-      nearest = candidate;
-      nearestSquaredDistance = squaredDistance;
-    }
-  }
-  return nearest;
 }
 
 class _StopMarker extends StatelessWidget {
@@ -2257,6 +2238,18 @@ List<_DisplayPolyline> _splitOverlappingRoutePolylines(
     }
   }
   if (pieces.isEmpty) return standalone;
+
+  // Overlap styling is quadratic/cubic in the number of route segments. API
+  // responses can contain hundreds of segments, where that styling costs more
+  // than the map itself. Preserve the route lines and skip the decorative
+  // splitting once the data is large.
+  if (pieces.length > 160) {
+    return [
+      for (final line in routeLines)
+        if (line.overlay.shape.isNotEmpty)
+          _DisplayPolyline(points: line.overlay.shape, color: line.color),
+    ];
+  }
 
   final cuts = [
     for (final _ in pieces) <double>[0, 1],
