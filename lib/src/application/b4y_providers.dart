@@ -653,17 +653,19 @@ final homeGalleryPhotosProvider = StreamProvider.autoDispose
     .family<List<GalleryPhoto>, String?>((ref, routeId) {
       final repository = ref.watch(galleryRepositoryProvider);
       final userId = ref.watch(authUserProvider).valueOrNull?.uid ?? '';
-      if (repository != null && routeId != null) {
-        return repository.watchPhotos(
-          targetType: 'route',
-          targetId: routeId,
-          userId: userId,
-        );
+      if (repository != null) {
+        return routeId == null
+            ? repository.watchAllPhotos(userId: userId)
+            : repository.watchPhotos(
+                targetType: 'route',
+                targetId: routeId,
+                userId: userId,
+              );
       }
       final data = ref.watch(b4yDataProvider).valueOrNull;
       return Stream.value(
         routeId == null
-            ? const <GalleryPhoto>[]
+            ? data?.galleryPhotos ?? const <GalleryPhoto>[]
             : data?.galleryPhotos
                       .where((photo) => photo.routeId == routeId)
                       .toList() ??

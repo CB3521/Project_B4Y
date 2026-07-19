@@ -1150,21 +1150,20 @@ class _RoutePhotoContent extends StatelessWidget {
     if (photos.isEmpty) {
       return const Text('등록된 사진이 없어요.');
     }
-    final representative = _representativePhoto(photos);
+    final latestPhoto = _latestPhoto(photos);
+    final representative = latestPhoto;
     return Column(
       children: [
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: PhotoThumb(
-            imageUrl: representative.imageUrl,
+            imageUrl: latestPhoto.imageUrl,
             width: 68,
             height: 56,
             borderRadius: 8,
           ),
           title: Text(
-            representative.description.isEmpty
-                ? '대표 사진'
-                : representative.description,
+            latestPhoto.description.isEmpty ? '대표 사진' : latestPhoto.description,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -1188,11 +1187,8 @@ class _RoutePhotoContent extends StatelessWidget {
   }
 }
 
-GalleryPhoto _representativePhoto(List<GalleryPhoto> photos) {
+GalleryPhoto _latestPhoto(List<GalleryPhoto> photos) {
   return photos.reduce((current, candidate) {
-    if (candidate.likeCount != current.likeCount) {
-      return candidate.likeCount > current.likeCount ? candidate : current;
-    }
     return candidate.createdAt.isAfter(current.createdAt) ? candidate : current;
   });
 }
