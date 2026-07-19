@@ -318,29 +318,71 @@ class _KakaoMapViewState extends State<KakaoMapView> {
         kakao.maps.event.addListener(map, 'dragend', sendCenter);
         kakao.maps.event.addListener(map, 'zoom_changed', sendCenter);
       }
-      window.b4yMapOverlays = [];
+      // Keep the Kakao objects alive between Flutter rebuilds. Recreating every
+      // marker and polyline on each payload made mode/location changes very
+      // expensive, especially on mobile WebViews.
+      window.b4yMapMarkers = new Map();
+      window.b4yMapPolylines = new Map();
       window.b4yMapRender = (next) => {
-        window.b4yMapOverlays.forEach((overlay) => overlay.setMap(null));
-        window.b4yMapOverlays = [];
-        map.setLevel(next.zoom);
-        next.polylines.forEach((line) => {
-          window.b4yMapOverlays.push(new kakao.maps.Polyline({
-            map,
-            path: line.points.map((point) => new kakao.maps.LatLng(point.lat, point.lng)),
-            strokeWeight: line.strokeWidth,
-            strokeColor: line.color,
-            strokeOpacity: 0.9,
-            strokeStyle: 'solid'
-          }));
+        const activePolylineKeys = new Set();
+        next.polylines.forEach((line, index) => {
+          const key = String(index);
+          activePolylineKeys.add(key);
+          const path = line.points.map((point) => new kakao.maps.LatLng(point.lat, point.lng));
+          let polyline = window.b4yMapPolylines.get(key);
+          if (!polyline) {
+            polyline = new kakao.maps.Polyline({
+              map,
+              path,
+              strokeWeight: line.strokeWidth,
+              strokeColor: line.color,
+              strokeOpacity: 0.9,
+              strokeStyle: 'solid'
+            });
+            window.b4yMapPolylines.set(key, polyline);
+          } else {
+            polyline.setPath(path);
+            polyline.setOptions({
+              strokeWeight: line.strokeWidth,
+              strokeColor: line.color,
+              strokeOpacity: 0.9,
+              strokeStyle: 'solid'
+            });
+          }
         });
-        next.markers.forEach((marker) => {
-          window.b4yMapOverlays.push(new kakao.maps.CustomOverlay({
-            map,
-            position: new kakao.maps.LatLng(marker.lat, marker.lng),
-            content: markerHtml(marker),
-            xAnchor: 0.5,
-            yAnchor: marker.kind === 'currentLocation' ? 0.5 : 1
-          }));
+        window.b4yMapPolylines.forEach((polyline, key) => {
+          if (!activePolylineKeys.has(key)) {
+            polyline.setMap(null);
+            window.b4yMapPolylines.delete(key);
+          }
+        });
+
+        const activeMarkerKeys = new Set();
+        next.markers.forEach((marker, index) => {
+          const key = marker.id || 'anonymous-' + index;
+          activeMarkerKeys.add(key);
+          const position = new kakao.maps.LatLng(marker.lat, marker.lng);
+          let overlay = window.b4yMapMarkers.get(key);
+          if (!overlay) {
+            overlay = new kakao.maps.CustomOverlay({
+              map,
+              position,
+              content: markerHtml(marker),
+              xAnchor: 0.5,
+              yAnchor: marker.kind === 'currentLocation' ? 0.5 : 1
+            });
+            window.b4yMapMarkers.set(key, overlay);
+          } else {
+            overlay.setPosition(position);
+            overlay.setContent(markerHtml(marker));
+            overlay.setZIndex(index);
+          }
+        });
+        window.b4yMapMarkers.forEach((overlay, key) => {
+          if (!activeMarkerKeys.has(key)) {
+            overlay.setMap(null);
+            window.b4yMapMarkers.delete(key);
+          }
         });
         scheduleTextOverlayLayout();
         document.querySelectorAll('#map .overlay img').forEach((image) => {
@@ -382,8 +424,12 @@ class _KakaoMapViewState extends State<KakaoMapView> {
             ));
           }
         };
-        requestAnimationFrame(fitMap);
-        setTimeout(fitMap, 100);
+        if (next.fitToContent) {
+          requestAnimationFrame(fitMap);
+          setTimeout(fitMap, 100);
+        } else {
+          map.setCenter(new kakao.maps.LatLng(next.center.lat, next.center.lng));
+        }
       };
       window.b4yMapRender(data);
       kakao.maps.event.addListener(map, 'idle', scheduleTextOverlayLayout);

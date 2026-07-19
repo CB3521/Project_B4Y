@@ -1280,19 +1280,20 @@ class _RouteMapPanel extends ConsumerWidget {
                   _matchesHomeMissionFilter(mission, missionFilter),
             )
             .toList();
+        final missionsBySegment = <String, List<Mission>>{};
+        for (final mission in missions) {
+          final key =
+              '${mission.directionId}:${mission.startStopId}:${mission.endStopId}';
+          (missionsBySegment[key] ??= <Mission>[]).add(mission);
+        }
         final directions = selectedRoute == route && selectedDirection != null
             ? [selectedDirection]
             : route.directions;
         for (final direction in directions) {
           for (final segment in buildRouteSegments(route, direction, data)) {
-            final segmentMissions = missions
-                .where(
-                  (mission) =>
-                      mission.directionId == segment.directionId &&
-                      mission.startStopId == segment.startStop.id &&
-                      mission.endStopId == segment.endStop.id,
-                )
-                .toList();
+            final segmentMissions =
+                missionsBySegment['${segment.directionId}:${segment.startStop.id}:${segment.endStop.id}'] ??
+                const <Mission>[];
             if (segmentMissions.isEmpty) continue;
             final markerId =
                 'home-segment:${route.id}:${direction.id}:${segment.index}';
@@ -1315,21 +1316,24 @@ class _RouteMapPanel extends ConsumerWidget {
         }
       }
 
+      final spotMissions = (missionsAsync?.valueOrNull ?? const <Mission>[])
+          .where(
+            (mission) =>
+                mission.targetType == 'spot' &&
+                mission.routeId.isEmpty &&
+                _matchesHomeMissionFilter(mission, missionFilter),
+          )
+          .toList();
       for (final spot in data.touristSpots) {
         if (selectedRoute == null ||
             !spot.routeIds.contains(selectedRoute.id)) {
           continue;
         }
-        final missions = (missionsAsync?.valueOrNull ?? const <Mission>[])
-            .where(
-              (mission) =>
-                  mission.targetType == 'spot' &&
-                  mission.routeId.isEmpty &&
-                  _matchesHomeMissionFilter(mission, missionFilter),
-            )
-            .toList();
-        if (missions.isEmpty || !isValidMapPoint(spot.position)) continue;
-        final mission = missions.first;
+        if (spotMissions.isEmpty || !isValidMapPoint(spot.position)) continue;
+        final mission = spotMissions.firstWhere(
+          (candidate) => candidate.spotId == spot.id,
+          orElse: () => spotMissions.first,
+        );
         final markerId = 'home-tourist-mission:${spot.id}';
         missionSpotTargets[markerId] = (spotId: spot.id, missionId: mission.id);
         contentMarkers.add(

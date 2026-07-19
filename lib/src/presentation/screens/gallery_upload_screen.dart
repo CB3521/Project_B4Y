@@ -69,7 +69,11 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       _error = null;
     });
     try {
-      final picked = await ImagePicker().pickMultiImage();
+      final picked = await ImagePicker().pickMultiImage(
+        imageQuality: imageJpegQuality,
+        maxWidth: maxImageLongSidePixels.toDouble(),
+        maxHeight: maxImageLongSidePixels.toDouble(),
+      );
       for (final photo in picked) {
         if (!mounted) return;
         try {
