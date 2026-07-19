@@ -446,6 +446,14 @@ class _RoutePanelState extends ConsumerState<_RoutePanel> {
           ),
           const SizedBox(height: 16),
           if (mode == HomeContentMode.photos) ...[
+            if (galleryAsync?.hasError == true)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  '사진 목록을 불러오지 못했습니다.\n${galleryAsync?.error}',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(

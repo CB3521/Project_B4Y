@@ -26,13 +26,12 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     final data = ref.watch(b4yDataProvider).valueOrNull;
     final targetType = widget.routeId == null ? 'spot' : 'route';
     final selectedId = widget.routeId ?? widget.spotId;
-    final photos = selectedId == null
-        ? const <GalleryPhoto>[]
+    final galleryAsync = selectedId == null
+        ? null
         : targetType == 'route'
-        ? ref.watch(galleryForRouteProvider(selectedId)).valueOrNull ??
-              const <GalleryPhoto>[]
-        : ref.watch(galleryForSpotProvider(selectedId)).valueOrNull ??
-              const <GalleryPhoto>[];
+        ? ref.watch(galleryForRouteProvider(selectedId))
+        : ref.watch(galleryForSpotProvider(selectedId));
+    final photos = galleryAsync?.valueOrNull ?? const <GalleryPhoto>[];
     final title = targetType == 'route'
         ? _routeLabel(data, selectedId, fallback: widget.routeLabel)
         : _spotLabel(data, selectedId);
@@ -42,7 +41,16 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
         children: [
-          if (photos.isEmpty)
+          if (galleryAsync?.hasError == true)
+            Padding(
+              padding: const EdgeInsets.only(top: 72, left: 16, right: 16),
+              child: Text(
+                '사진 목록을 불러오지 못했습니다.\n${galleryAsync?.error}',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            )
+          else if (photos.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 96),
               child: Center(child: Text('사진이 아직 없어요.')),
