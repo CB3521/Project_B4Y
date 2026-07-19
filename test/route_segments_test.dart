@@ -4,6 +4,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
 void main() {
+  test('finds the nearest segment from a GPS position', () {
+    final route = _route(8);
+    final data = B4ySampleData(
+      stops: [for (var i = 0; i < 8; i++) _stop(i)],
+      routes: [route],
+      routePhotoClusters: const [],
+      touristSpots: const [],
+      reviews: const [],
+      missions: const [],
+      galleryPhotos: const [],
+    );
+
+    final segment = findNearestRouteSegment(
+      route,
+      data,
+      const LatLng(37.065, 126),
+    );
+
+    expect(segment, isNotNull);
+    expect(segment!.directionId, 'up');
+    expect(segment.startStop.id, 'stop_4');
+  });
+
   for (final count in [3, 4, 6, 7, 8, 9, 10]) {
     test('splits $count stops evenly', () {
       final route = _route(count);
@@ -17,14 +40,13 @@ void main() {
         galleryPhotos: const [],
       );
 
-      final segments = buildRouteSegments(
-        route,
-        route.defaultDirection,
-        data,
-      );
+      final segments = buildRouteSegments(route, route.defaultDirection, data);
 
       expect(segments.expand((segment) => segment.stops), hasLength(count));
-      expect(segments.map((segment) => segment.stops.length), everyElement(isIn([2, 3, 4])));
+      expect(
+        segments.map((segment) => segment.stops.length),
+        everyElement(isIn([2, 3, 4])),
+      );
       expect(segments.first.startStop.id, 'stop_0');
       expect(segments.last.endStop.id, 'stop_${count - 1}');
     });

@@ -3,9 +3,44 @@ import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 
+import 'package:latlong2/latlong.dart';
+
 const maxImageDataUrlBytes = 360 * 1024;
 const maxImageLongSidePixels = 768;
 const imageJpegQuality = 55;
+
+/// GPS coordinates embedded in an image's EXIF metadata.
+class ImageGpsLocation {
+  const ImageGpsLocation(this.position);
+
+  final LatLng position;
+}
+
+ImageGpsLocation? extractImageGpsLocation(Uint8List source) {
+  try {
+    final decoded = img.decodeImage(source);
+    if (decoded == null || !decoded.hasExif) return null;
+
+    final gps = decoded.exif.gpsIfd;
+    final latitude = gps.gpsLatitude;
+    final longitude = gps.gpsLongitude;
+    if (latitude == null || longitude == null) return null;
+
+    final lat = _applyGpsReference(latitude, gps.gpsLatitudeRef, 'S');
+    final lng = _applyGpsReference(longitude, gps.gpsLongitudeRef, 'W');
+    if (lat.isNaN || lng.isNaN || lat.abs() > 90 || lng.abs() > 180) {
+      return null;
+    }
+    return ImageGpsLocation(LatLng(lat, lng));
+  } on Object {
+    // A malformed or unsupported EXIF block must not prevent an upload.
+    return null;
+  }
+}
+
+double _applyGpsReference(double value, String? reference, String negative) {
+  return reference?.toUpperCase() == negative ? -value.abs() : value.abs();
+}
 
 String encodeImageDataUrl(Uint8List source) {
   final decoded = img.decodeImage(source);

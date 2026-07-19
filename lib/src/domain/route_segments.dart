@@ -68,3 +68,27 @@ RouteSegment? findRouteSegment(
   }
   return null;
 }
+
+/// Finds the segment whose midpoint is closest to an image's GPS position.
+///
+/// A segment midpoint is stable even when a photo is taken between two stops,
+/// and checking both directions lets the location determine the direction too.
+RouteSegment? findNearestRouteSegment(
+  BusRoute route,
+  B4ySampleData data,
+  LatLng position,
+) {
+  const distance = Distance();
+  RouteSegment? nearest;
+  var nearestMeters = double.infinity;
+  for (final direction in route.directions) {
+    for (final segment in buildRouteSegments(route, direction, data)) {
+      final meters = distance(position, segment.center);
+      if (meters < nearestMeters) {
+        nearestMeters = meters;
+        nearest = segment;
+      }
+    }
+  }
+  return nearest;
+}

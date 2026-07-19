@@ -36,7 +36,7 @@ class GalleryUploadScreen extends ConsumerStatefulWidget {
 
 class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
   final _titleController = TextEditingController();
-  final _photos = <String>[];
+  final _photos = <_GalleryPhotoDraft>[];
   String? _directionId;
   String? _startStopId;
   String? _endStopId;
@@ -71,16 +71,21 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       _error = null;
     });
     try {
-      final picked = await ImagePicker().pickMultiImage(
-        imageQuality: imageJpegQuality,
-        maxWidth: maxImageLongSidePixels.toDouble(),
-        maxHeight: maxImageLongSidePixels.toDouble(),
-      );
+      // Read the original bytes so the EXIF GPS block is still available.
+      final picked = await ImagePicker().pickMultiImage();
       for (final photo in picked) {
         if (!mounted) return;
         try {
-          final encoded = encodeImageDataUrl(await photo.readAsBytes());
-          if (!_photos.contains(encoded)) _photos.add(encoded);
+          final bytes = await photo.readAsBytes();
+          final encoded = encodeImageDataUrl(bytes);
+          if (!_photos.any((item) => item.imageDataUrl == encoded)) {
+            _photos.add(
+              _GalleryPhotoDraft(
+                imageDataUrl: encoded,
+                gps: extractImageGpsLocation(bytes),
+              ),
+            );
+          }
         } on Object catch (caught) {
           _error = '$caught';
         }
@@ -126,17 +131,24 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       if (user == null) throw StateError('사용자 정보를 만들 수 없습니다.');
       final profile = ref.read(currentProfileProvider).valueOrNull;
       final nickname = profile?.nickname.trim();
+      final data = ref.read(b4yDataProvider).valueOrNull;
+      final route = data?.routes
+          .where((item) => item.id == widget.routeId)
+          .firstOrNull;
       for (final photo in _photos) {
+        final segment = photo.gps == null || route == null || data == null
+            ? null
+            : findNearestRouteSegment(route, data, photo.gps!.position);
         await repository.createPhoto(
           targetType: widget.targetType,
           targetId: widget.targetId,
           routeId: widget.routeId,
-          directionId: _directionId ?? '',
-          startStopId: _startStopId ?? '',
-          endStopId: _endStopId ?? '',
+          directionId: segment?.directionId ?? _directionId ?? '',
+          startStopId: segment?.startStop.id ?? _startStopId ?? '',
+          endStopId: segment?.endStop.id ?? _endStopId ?? '',
           spotId: widget.spotId,
           description: _titleController.text,
-          imageDataUrl: photo,
+          imageDataUrl: photo.imageDataUrl,
           authorNickname: nickname?.isNotEmpty == true ? nickname! : '방문자',
           authorUid: user.uid,
         );
@@ -241,7 +253,7 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
                 return Stack(
                   fit: StackFit.expand,
                   children: [
-                    PhotoThumb(imageUrl: _photos[index]),
+                    PhotoThumb(imageUrl: _photos[index].imageDataUrl),
                     Positioned(
                       top: 2,
                       right: 2,
@@ -295,6 +307,13 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       _endStopId = result.endStop.id;
     });
   }
+}
+
+class _GalleryPhotoDraft {
+  const _GalleryPhotoDraft({required this.imageDataUrl, this.gps});
+
+  final String imageDataUrl;
+  final ImageGpsLocation? gps;
 }
 
 class _GallerySegmentPicker extends StatefulWidget {
