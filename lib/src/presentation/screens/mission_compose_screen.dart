@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../application/b4y_providers.dart';
 import '../../data/image_data_url.dart';
@@ -306,6 +307,15 @@ class _MissionComposeScreenState extends ConsumerState<MissionComposeScreen> {
       setState(
         () => _error = widget.routeOnly ? '노선을 선택해 주세요.' : '관광지를 선택해 주세요.',
       );
+      return;
+    }
+    if (_targetType == _MissionTargetType.route && _selectedRoute == null) {
+      setState(() => _error = '노선을 선택해 주세요.');
+      return;
+    }
+    if (_targetType == _MissionTargetType.spot &&
+        (_selectedSpot?.id ?? widget.spotId).isEmpty) {
+      setState(() => _error = '관광지를 선택해 주세요.');
       return;
     }
     final missionText = _missionController.text.trim();
@@ -1581,6 +1591,23 @@ List<BusStop> _stopsForDirection(B4ySampleData data, RouteDirection direction) {
 
 String _messageFor(Object error) {
   if (error is FormatException) return error.message;
+  if (error is FirebaseAuthException) {
+    return switch (error.code) {
+      'operation-not-allowed' =>
+        '익명 로그인이 비활성화되어 미션을 저장할 수 없습니다. Firebase Authentication에서 익명 로그인을 켜 주세요.',
+      'network-request-failed' => '네트워크가 불안정해 로그인하지 못했습니다.',
+      _ => '로그인하지 못했습니다. (${error.code})',
+    };
+  }
+  if (error is FirebaseException) {
+    return switch (error.code) {
+      'permission-denied' =>
+        '저장 권한이 거부되었습니다. Firebase 로그인과 Firestore 규칙을 확인해 주세요.',
+      'resource-exhausted' => '미션 사진 용량이 너무 큽니다. 더 작은 사진을 선택해 주세요.',
+      'unavailable' => '네트워크가 불안정해 저장하지 못했습니다.',
+      _ => '저장하지 못했습니다. (${error.code})',
+    };
+  }
   return '저장하지 못했습니다. 잠시 후 다시 시도해 주세요.';
 }
 

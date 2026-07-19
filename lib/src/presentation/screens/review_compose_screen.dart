@@ -1,4 +1,4 @@
-import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -113,6 +113,10 @@ class _ReviewComposeScreenState extends ConsumerState<ReviewComposeScreen> {
     final auth = ref.read(firebaseAuthProvider);
     if (repository == null || auth == null) {
       setState(() => _error = 'Firebase 연결을 확인해 주세요.');
+      return;
+    }
+    if (widget.spotId.trim().isEmpty) {
+      setState(() => _error = '리뷰를 등록할 관광지를 확인해 주세요.');
       return;
     }
     setState(() {
@@ -589,6 +593,14 @@ String _formatDate(DateTime value) {
 
 String _messageFor(Object error) {
   if (error is FormatException) return error.message;
+  if (error is FirebaseAuthException) {
+    return switch (error.code) {
+      'operation-not-allowed' =>
+        '익명 로그인이 비활성화되어 리뷰를 저장할 수 없습니다. Firebase Authentication에서 익명 로그인을 켜 주세요.',
+      'network-request-failed' => '네트워크가 불안정해 로그인하지 못했습니다.',
+      _ => '로그인하지 못했습니다. (${error.code})',
+    };
+  }
   if (error is FirebaseException) {
     return switch (error.code) {
       'permission-denied' => '저장 권한이 거부됐어요. Firestore 규칙을 확인해 주세요.',

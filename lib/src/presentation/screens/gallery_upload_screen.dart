@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../application/b4y_providers.dart';
@@ -53,6 +54,7 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
         ? null
         : widget.initialEndStopId;
   }
+
   var _picking = false;
   var _saving = false;
   String? _error;
@@ -102,6 +104,14 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       setState(() => _error = '공유할 사진을 하나 이상 선택해 주세요.');
       return;
     }
+    if (widget.targetId.trim().isEmpty ||
+        (widget.targetType != 'route' && widget.targetType != 'spot')) {
+      setState(() => _error = '사진을 올릴 대상을 확인해 주세요.');
+      return;
+    }
+    if (widget.targetType == 'route') {
+      _selectDefaultRouteSegment();
+    }
     if (widget.targetType == 'route' &&
         (_directionId == null || _startStopId == null || _endStopId == null)) {
       setState(() => _error = '사진을 올릴 노선 구간을 선택해 주세요.');
@@ -136,10 +146,29 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
       if (mounted) {
         setState(() {
           _saving = false;
-          _error = '$caught';
+          _error = _messageFor(caught);
         });
       }
     }
+  }
+
+  void _selectDefaultRouteSegment() {
+    if (_directionId != null && _startStopId != null && _endStopId != null) {
+      return;
+    }
+    final data = ref.read(b4yDataProvider).valueOrNull;
+    final route = data?.routes
+        .where((item) => item.id == widget.routeId)
+        .firstOrNull;
+    if (data == null || route == null) return;
+    final direction = _directionId == null
+        ? route.defaultDirection
+        : route.directionById(_directionId!);
+    final firstSegment = buildRouteSegments(route, direction, data).firstOrNull;
+    if (firstSegment == null) return;
+    _directionId = direction.id;
+    _startStopId = firstSegment.startStop.id;
+    _endStopId = firstSegment.endStop.id;
   }
 
   @override
@@ -250,7 +279,9 @@ class _GalleryUploadScreenState extends ConsumerState<GalleryUploadScreen> {
   Future<void> _pickSegment() async {
     final data = ref.read(b4yDataProvider).valueOrNull;
     if (data == null) return;
-    final route = data.routes.where((item) => item.id == widget.routeId).firstOrNull;
+    final route = data.routes
+        .where((item) => item.id == widget.routeId)
+        .firstOrNull;
     if (route == null) return;
     final result = await Navigator.of(context).push<RouteSegment>(
       MaterialPageRoute<RouteSegment>(
@@ -316,7 +347,9 @@ class _GallerySegmentPickerState extends State<_GallerySegmentPicker> {
             Card(
               child: ListTile(
                 leading: CircleAvatar(child: Text('${segment.index + 1}')),
-                title: Text('${segment.startStop.name} → ${segment.endStop.name}'),
+                title: Text(
+                  '${segment.startStop.name} → ${segment.endStop.name}',
+                ),
                 subtitle: Text('${segment.stops.length}개 정류장'),
                 onTap: () => Navigator.of(context).pop(segment),
               ),
@@ -325,4 +358,25 @@ class _GallerySegmentPickerState extends State<_GallerySegmentPicker> {
       ),
     );
   }
+}
+
+String _messageFor(Object error) {
+  if (error is FirebaseAuthException) {
+    return switch (error.code) {
+      'operation-not-allowed' =>
+        '익명 로그인이 비활성화되어 사진을 저장할 수 없습니다. Firebase Authentication에서 익명 로그인을 켜 주세요.',
+      'network-request-failed' => '네트워크가 불안정해 로그인하지 못했습니다.',
+      _ => '로그인하지 못했습니다. (${error.code})',
+    };
+  }
+  if (error is FirebaseException) {
+    return switch (error.code) {
+      'permission-denied' =>
+        '사진 저장 권한이 거부되었습니다. Firebase 로그인과 Firestore 규칙을 확인해 주세요.',
+      'resource-exhausted' => '사진 용량이 너무 큽니다. 더 작은 사진을 선택해 주세요.',
+      'unavailable' => '네트워크가 불안정해 사진을 저장하지 못했습니다.',
+      _ => '사진을 저장하지 못했습니다. (${error.code})',
+    };
+  }
+  return '사진을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.';
 }
