@@ -1,0 +1,157 @@
+{
+  "stops": [
+    {"id": "stop_jeongwang", "name": "정왕역", "lat": 37.3516, "lng": 126.7427, "sequence": 1},
+    {"id": "stop_okgu", "name": "옥구공원", "lat": 37.3488, "lng": 126.7248, "sequence": 2},
+    {"id": "stop_baegot", "name": "배곧한울공원", "lat": 37.3672, "lng": 126.7049, "sequence": 3},
+    {"id": "stop_oido", "name": "오이도박물관", "lat": 37.3451, "lng": 126.6876, "sequence": 4},
+    {"id": "stop_ansan", "name": "안산역", "lat": 37.3271, "lng": 126.7888, "sequence": 5},
+    {"id": "stop_lake", "name": "안산호수공원", "lat": 37.3017, "lng": 126.8212, "sequence": 6}
+  ],
+  "routes": [
+    {
+      "id": "route_33",
+      "number": "33",
+      "destination": "오이도해양단지",
+      "directions": [
+        {
+          "id": "up",
+          "name": "상행",
+          "destination": "오이도 방면",
+          "stopIds": ["stop_jeongwang", "stop_okgu", "stop_baegot", "stop_oido"],
+          "shape": [
+            {"lat": 37.3516, "lng": 126.7427},
+            {"lat": 37.3488, "lng": 126.7248},
+            {"lat": 37.3672, "lng": 126.7049},
+            {"lat": 37.3451, "lng": 126.6876}
+          ]
+        },
+        {
+          "id": "down",
+          "name": "하행",
+          "destination": "정왕역 방면",
+          "stopIds": ["stop_oido", "stop_baegot", "stop_okgu", "stop_jeongwang"],
+          "shape": [
+            {"lat": 37.3451, "lng": 126.6876},
+            {"lat": 37.3672, "lng": 126.7049},
+            {"lat": 37.3488, "lng": 126.7248},
+            {"lat": 37.3516, "lng": 126.7427}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "route_55",
+      "number": "55",
+      "destination": "안산호수공원",
+      "directions": [
+        {
+          "id": "up",
+          "name": "상행",
+          "destination": "호수공원 방면",
+          "stopIds": ["stop_jeongwang", "stop_ansan", "stop_lake"],
+          "shape": [
+            {"lat": 37.3516, "lng": 126.7427},
+            {"lat": 37.3271, "lng": 126.7888},
+            {"lat": 37.3017, "lng": 126.8212}
+          ]
+        },
+        {
+          "id": "down",
+          "name": "하행",
+          "destination": "정왕역 방면",
+          "stopIds": ["stop_lake", "stop_ansan", "stop_jeongwang"],
+          "shape": [
+            {"lat": 37.3017, "lng": 126.8212},
+            {"lat": 37.3271, "lng": 126.7888},
+            {"lat": 37.3516, "lng": 126.7427}
+          ]
+        }
+      ]
+    }
+  ],
+  "routePhotoClusters": [
+    {
+      "id": "cluster_sunset",
+      "routeId": "route_33",
+      "directionId": "up",
+      "startStopId": "stop_baegot",
+      "endStopId": "stop_oido",
+      "photos": [
+        {
+          "id": "photo_sunset_1",
+          "imageUrl": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80",
+          "authorNickname": "바다길러버",
+          "description": "오이도 가는 길 노을이 예뻤어요.",
+          "createdAt": "2026-06-01T18:20:00Z",
+          "likeCount": 18,
+          "distanceMeters": 320
+        },
+        {
+          "id": "photo_sunset_2",
+          "imageUrl": "https://images.unsplash.com/photo-1493246507139-91e8fad9978e?auto=format&fit=crop&w=1200&q=80",
+          "authorNickname": "정류장산책",
+          "description": "창밖 풍경 인증.",
+          "createdAt": "2026-06-02T12:10:00Z",
+          "likeCount": 9,
+          "distanceMeters": 430
+        }
+      ]
+    },
+    {
+      "id": "cluster_lake",
+      "routeId": "route_55",
+      "directionId": "up",
+      "startStopId": "stop_ansan",
+      "endStopId": "stop_lake",
+      "photos": [
+        {
+          "id": "photo_lake_1",
+          "imageUrl": "https://images.unsplash.com/photo-1470770903676-69b98201ea1c?auto=format&fit=crop&w=1200&q=80",
+          "authorNickname": "호수한바퀴",
+          "description": "도착 직전 보이는 공원길.",
+          "createdAt": "2026-06-03T09:30:00Z",
+          "likeCount": 21,
+          "distanceMeters": 180
+        }
+      ]
+    }
+  ],
+  "touristSpots": [
+    {
+      "id": "spot_oido",
+      "name": "오이도 빨강등대",
+      "address": "경기도 시흥시 오이도로 175",
+      "description": "해안 산책로와 노을이 유명한 시흥의 대표 포토 스팟입니다.",
+      "lat": 37.3455,
+      "lng": 126.6871,
+      "heroImageUrl": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80",
+      "nearestStopId": "stop_oido",
+      "routeIds": ["route_33"]
+    },
+    {
+      "id": "spot_lake",
+      "name": "안산호수공원",
+      "address": "경기도 안산시 단원구 광덕대로 260",
+      "description": "넓은 산책로와 잔디광장이 있는 도심형 휴식 공간입니다.",
+      "lat": 37.3011,
+      "lng": 126.8219,
+      "heroImageUrl": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80",
+      "nearestStopId": "stop_lake",
+      "routeIds": ["route_55"]
+    }
+  ],
+  "reviews": [
+    {"id": "review_1", "spotId": "spot_oido", "authorNickname": "주말여행자", "summary": "노을 보기 좋음", "createdAt": "2026-06-02T10:00:00Z", "likeCount": 31, "rating": 5},
+    {"id": "review_2", "spotId": "spot_lake", "authorNickname": "산책러", "summary": "가볍게 걷기 좋아요", "createdAt": "2026-06-04T08:00:00Z", "likeCount": 17, "rating": 4}
+  ],
+  "missions": [
+    {"id": "mission_1", "spotId": "spot_oido", "title": "빨강등대와 같은 프레임으로 사진 찍기", "authorNickname": "바다길러버", "createdAt": "2026-06-01T09:00:00Z", "likeCount": 26, "verificationCount": 14},
+    {"id": "mission_2", "spotId": "spot_lake", "title": "호수공원 한 바퀴 산책 인증", "authorNickname": "호수한바퀴", "createdAt": "2026-06-03T11:00:00Z", "likeCount": 19, "verificationCount": 8}
+  ],
+  "galleryPhotos": [
+    {"id": "gallery_1", "spotId": "spot_oido", "imageUrl": "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=80", "authorNickname": "등대수집가", "description": "빨간색이 선명했던 날", "createdAt": "2026-06-05T12:00:00Z", "likeCount": 45, "distanceMeters": 120},
+    {"id": "gallery_2", "spotId": "spot_oido", "imageUrl": "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=70", "authorNickname": "노을노트", "description": "퇴근 후 노을", "createdAt": "2026-06-04T18:00:00Z", "likeCount": 28, "distanceMeters": 240},
+    {"id": "gallery_3", "spotId": "spot_lake", "imageUrl": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=80", "authorNickname": "초록길", "description": "나무 그늘 산책", "createdAt": "2026-06-05T10:00:00Z", "likeCount": 34, "distanceMeters": 90},
+    {"id": "gallery_4", "spotId": "spot_lake", "imageUrl": "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80", "authorNickname": "공원탐험", "description": "하늘이 맑았어요", "createdAt": "2026-06-01T13:00:00Z", "likeCount": 12, "distanceMeters": 310}
+  ]
+}

@@ -1,0 +1,346 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function validImage(value) {
+      return value == null ||
+          (value is string &&
+           value.size() <= 716800 &&
+           value.matches('data:image/jpeg;base64,.*'));
+    }
+
+    function validImageList(value) {
+      return value is list &&
+          value.size() <= 6 &&
+          (value.size() < 1 || validImage(value[0])) &&
+          (value.size() < 2 || validImage(value[1])) &&
+          (value.size() < 3 || validImage(value[2])) &&
+          (value.size() < 4 || validImage(value[3])) &&
+          (value.size() < 5 || validImage(value[4])) &&
+          (value.size() < 6 || validImage(value[5]));
+    }
+
+    function signedInUser(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function validProfile() {
+      return request.resource.data.keys().hasOnly([
+            'nickname', 'photoDataUrl', 'updatedAt'
+          ]) &&
+          request.resource.data.nickname is string &&
+          request.resource.data.nickname.size() > 0 &&
+          request.resource.data.nickname.size() <= 30 &&
+          validImage(request.resource.data.photoDataUrl) &&
+          request.resource.data.updatedAt == request.time;
+    }
+
+    function validRating(value) {
+      return value in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+    }
+
+    function validCommonCreate() {
+      return signedIn() &&
+          request.resource.data.spotId is string &&
+          request.resource.data.spotId.size() > 0 &&
+          request.resource.data.authorNickname is string &&
+          request.resource.data.authorNickname.size() > 0 &&
+          request.resource.data.authorNickname.size() <= 30 &&
+          request.resource.data.authorUid == request.auth.uid &&
+          validImage(request.resource.data.imageDataUrl) &&
+          request.resource.data.createdAt == request.time;
+    }
+
+    function validMissionCommonCreate() {
+      return signedIn() &&
+          request.resource.data.spotId is string &&
+          (request.resource.data.spotId.size() > 0 ||
+           request.resource.data.targetType == 'route') &&
+          request.resource.data.authorNickname is string &&
+          request.resource.data.authorNickname.size() > 0 &&
+          request.resource.data.authorNickname.size() <= 30 &&
+          request.resource.data.authorUid == request.auth.uid &&
+          validImage(request.resource.data.imageDataUrl) &&
+          request.resource.data.createdAt == request.time;
+    }
+
+    function validAuthorNicknameUpdate() {
+      return signedIn() &&
+          resource.data.authorUid == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['authorNickname']) &&
+          request.resource.data.authorNickname is string &&
+          request.resource.data.authorNickname.size() > 0 &&
+          request.resource.data.authorNickname.size() <= 30;
+    }
+
+    function validMissionReactionUpdate() {
+      return signedIn() &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['likeCount', 'verificationCount', 'representativeScore']) &&
+          request.resource.data.likeCount is int &&
+          request.resource.data.verificationCount is int &&
+          request.resource.data.likeCount >= 0 &&
+          request.resource.data.verificationCount >= 0 &&
+          (request.resource.data.likeCount - resource.data.likeCount) in [-1, 0, 1] &&
+          (request.resource.data.verificationCount - resource.data.verificationCount) in [-1, 0, 1] &&
+          ((request.resource.data.likeCount == 0 &&
+            request.resource.data.verificationCount == 0 &&
+            request.resource.data.representativeScore == null) ||
+           (request.resource.data.likeCount +
+                request.resource.data.verificationCount > 0 &&
+            request.resource.data.representativeScore ==
+                (request.resource.data.likeCount +
+                     request.resource.data.verificationCount) /
+                2.0));
+    }
+
+    function validRouteDirection(direction) {
+      return direction is map &&
+          direction.keys().hasOnly([
+            'id', 'name', 'destination', 'stopIds', 'shape'
+          ]) &&
+          direction.id is string &&
+          direction.name is string &&
+          direction.destination is string &&
+          direction.stopIds is list &&
+          direction.stopIds.size() <= 300 &&
+          direction.shape is list &&
+          direction.shape.size() <= 1000;
+    }
+
+    function validRouteDirections(value) {
+      return value is list &&
+          value.size() > 0 &&
+          value.size() <= 4 &&
+          validRouteDirection(value[0]) &&
+          (value.size() < 2 || validRouteDirection(value[1])) &&
+          (value.size() < 3 || validRouteDirection(value[2])) &&
+          (value.size() < 4 || validRouteDirection(value[3]));
+    }
+
+    function validRouteCache() {
+      return signedIn() &&
+          request.resource.data.keys().hasOnly([
+            'routeId', 'number', 'destination', 'routeType', 'directions',
+            'searchPrefixes', 'updatedAt'
+          ]) &&
+          request.resource.data.routeId == request.resource.id &&
+          request.resource.data.number is string &&
+          request.resource.data.number.size() > 0 &&
+          request.resource.data.number.size() <= 40 &&
+          request.resource.data.destination is string &&
+          request.resource.data.destination.size() <= 100 &&
+          request.resource.data.routeType is string &&
+          request.resource.data.routeType.size() <= 40 &&
+          validRouteDirections(request.resource.data.directions) &&
+          request.resource.data.searchPrefixes is list &&
+          request.resource.data.searchPrefixes.size() > 0 &&
+          request.resource.data.searchPrefixes.size() <= 40 &&
+          request.resource.data.updatedAt == request.time;
+    }
+
+    function validGalleryCreate() {
+      return signedIn() &&
+          request.resource.data.keys().hasOnly([
+            'targetType', 'targetId', 'routeId', 'spotId', 'directionId',
+            'startStopId', 'endStopId', 'description',
+            'imageDataUrl', 'authorNickname', 'authorUid', 'likeCount',
+            'distanceMeters', 'createdAt'
+          ]) &&
+          request.resource.data.targetType in ['route', 'spot'] &&
+          request.resource.data.targetId is string &&
+          request.resource.data.targetId.size() > 0 &&
+          request.resource.data.routeId is string &&
+          request.resource.data.spotId is string &&
+          request.resource.data.directionId is string &&
+          request.resource.data.startStopId is string &&
+          request.resource.data.endStopId is string &&
+          ((request.resource.data.targetType == 'route' &&
+            request.resource.data.routeId == request.resource.data.targetId &&
+            request.resource.data.directionId.size() > 0 &&
+            request.resource.data.startStopId.size() > 0 &&
+            request.resource.data.endStopId.size() > 0) ||
+           (request.resource.data.targetType == 'spot' &&
+            request.resource.data.spotId == request.resource.data.targetId &&
+            request.resource.data.directionId == '' &&
+            request.resource.data.startStopId == '' &&
+            request.resource.data.endStopId == '')) &&
+          request.resource.data.description is string &&
+          request.resource.data.description.size() <= 120 &&
+          request.resource.data.imageDataUrl is string &&
+          validImage(request.resource.data.imageDataUrl) &&
+          request.resource.data.authorNickname is string &&
+          request.resource.data.authorNickname.size() > 0 &&
+          request.resource.data.authorNickname.size() <= 30 &&
+          request.resource.data.authorUid == request.auth.uid &&
+          request.resource.data.likeCount == 0 &&
+          request.resource.data.distanceMeters == 0 &&
+          request.resource.data.createdAt == request.time;
+    }
+
+    match /users/{userId} {
+      allow read: if signedInUser(userId);
+      allow create, update: if signedInUser(userId) && validProfile();
+      allow delete: if false;
+    }
+
+    match /regional_routes/{routeId} {
+      allow read: if signedIn();
+      allow create, update: if validRouteCache();
+      allow delete: if false;
+    }
+
+    match /gallery_photos/{photoId} {
+      allow read: if signedIn();
+      allow create: if validGalleryCreate();
+      allow update: if validAuthorNicknameUpdate() ||
+          (signedIn() &&
+           request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['likeCount']) &&
+           request.resource.data.likeCount is int &&
+           request.resource.data.likeCount >= 0 &&
+           (request.resource.data.likeCount - resource.data.likeCount) in [-1, 1]);
+      allow delete: if signedIn() && resource.data.authorUid == request.auth.uid;
+
+      match /reactions/{userId} {
+        allow read: if signedIn() && userId == request.auth.uid;
+        allow create, update: if signedIn() &&
+            userId == request.auth.uid &&
+            request.resource.data.keys().hasOnly(['liked']) &&
+            request.resource.data.liked is bool;
+        allow delete: if false;
+      }
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if signedIn();
+      allow create: if validCommonCreate() &&
+          request.resource.data.keys().hasOnly([
+            'spotId', 'title', 'authorNickname', 'authorUid',
+            'body', 'visitSeason', 'cleanlinessRating',
+            'accessibilityRating', 'overallRating', 'cleanlinessTags',
+            'accessibilityTags', 'cleanlinessOther', 'accessibilityOther',
+            'imageDataUrl', 'imageDataUrls', 'likeCount', 'createdAt'
+          ]) &&
+          request.resource.data.title is string &&
+          request.resource.data.title.size() <= 100 &&
+          request.resource.data.body is string &&
+          request.resource.data.body.size() <= 600 &&
+          request.resource.data.visitSeason is string &&
+          request.resource.data.visitSeason.size() <= 40 &&
+          validRating(request.resource.data.cleanlinessRating) &&
+          validRating(request.resource.data.accessibilityRating) &&
+          validRating(request.resource.data.overallRating) &&
+          request.resource.data.cleanlinessTags is list &&
+          request.resource.data.cleanlinessTags.size() <= 5 &&
+          request.resource.data.accessibilityTags is list &&
+          request.resource.data.accessibilityTags.size() <= 4 &&
+          request.resource.data.cleanlinessOther is string &&
+          request.resource.data.cleanlinessOther.size() <= 80 &&
+          request.resource.data.accessibilityOther is string &&
+          request.resource.data.accessibilityOther.size() <= 80 &&
+          validImageList(request.resource.data.imageDataUrls) &&
+          request.resource.data.imageDataUrls.size() == 0 &&
+          request.resource.data.likeCount == 0;
+      allow update: if validAuthorNicknameUpdate() ||
+          (signedIn() &&
+           request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['likeCount']) &&
+           request.resource.data.likeCount is int &&
+           request.resource.data.likeCount >= 0 &&
+           (request.resource.data.likeCount - resource.data.likeCount) in [-1, 1]);
+      allow delete: if signedIn() && resource.data.authorUid == request.auth.uid;
+
+      match /reactions/{userId} {
+        allow read: if signedIn() && userId == request.auth.uid;
+        allow create, update: if signedIn() &&
+            userId == request.auth.uid &&
+            request.resource.data.keys().hasOnly(['liked']) &&
+            request.resource.data.liked is bool;
+        allow delete: if false;
+      }
+
+      match /photos/{photoId} {
+        allow read: if signedIn();
+        allow create: if signedIn() &&
+            request.resource.data.keys().hasOnly([
+              'imageDataUrl', 'order', 'createdAt'
+            ]) &&
+            validImage(request.resource.data.imageDataUrl) &&
+            request.resource.data.order is int &&
+            request.resource.data.order >= 0 &&
+            request.resource.data.order < 6 &&
+            request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    match /missions/{missionId} {
+      allow read: if signedIn();
+      allow create: if validMissionCommonCreate() &&
+          request.resource.data.keys().hasOnly([
+            'spotId', 'title', 'authorNickname', 'authorUid', 'imageDataUrl',
+            'body', 'targetType', 'targetId', 'targetName', 'routeId',
+            'directionId', 'startStopId', 'endStopId', 'selectedLat',
+            'selectedLng', 'difficulty', 'availableSeason',
+            'availableStartDate', 'availableEndDate', 'missionTags',
+            'difficultyTags',
+            'verificationMethod', 'verificationRadiusMeters', 'likeCount',
+            'verificationCount', 'representativeScore', 'createdAt'
+          ]) &&
+          request.resource.data.title is string &&
+          request.resource.data.title.size() <= 100 &&
+          request.resource.data.body is string &&
+          request.resource.data.body.size() <= 600 &&
+          request.resource.data.targetType in ['route', 'spot'] &&
+          request.resource.data.targetId is string &&
+          request.resource.data.targetId.size() > 0 &&
+          request.resource.data.targetName is string &&
+          request.resource.data.targetName.size() > 0 &&
+          request.resource.data.routeId is string &&
+          request.resource.data.directionId is string &&
+          request.resource.data.startStopId is string &&
+          request.resource.data.endStopId is string &&
+          (request.resource.data.selectedLat == null ||
+            request.resource.data.selectedLat is number) &&
+          (request.resource.data.selectedLng == null ||
+            request.resource.data.selectedLng is number) &&
+          request.resource.data.difficulty in [1, 2, 3, 4, 5] &&
+          request.resource.data.availableSeason is string &&
+          request.resource.data.availableSeason.size() <= 80 &&
+          (!request.resource.data.keys().hasAny(['availableStartDate']) ||
+            (request.resource.data.availableStartDate is string &&
+              request.resource.data.availableStartDate.size() <= 10)) &&
+          (!request.resource.data.keys().hasAny(['availableEndDate']) ||
+            (request.resource.data.availableEndDate is string &&
+              request.resource.data.availableEndDate.size() <= 10)) &&
+          request.resource.data.missionTags is list &&
+          request.resource.data.missionTags.size() <= 8 &&
+          request.resource.data.difficultyTags is list &&
+          request.resource.data.difficultyTags.size() <= 4 &&
+          request.resource.data.verificationMethod in ['photo', 'location'] &&
+          request.resource.data.verificationRadiusMeters == 50 &&
+          request.resource.data.likeCount == 0 &&
+          request.resource.data.verificationCount == 0 &&
+          request.resource.data.representativeScore == null;
+      allow update: if validAuthorNicknameUpdate() ||
+          validMissionReactionUpdate();
+      allow delete: if signedIn() && resource.data.authorUid == request.auth.uid;
+
+      match /reactions/{userId} {
+        allow read: if signedIn() && userId == request.auth.uid;
+        allow create, update: if signedIn() &&
+            userId == request.auth.uid &&
+            request.resource.data.keys().hasOnly(['liked', 'verified']) &&
+            (!request.resource.data.keys().hasAny(['liked']) || request.resource.data.liked is bool) &&
+            (!request.resource.data.keys().hasAny(['verified']) || request.resource.data.verified is bool);
+        allow delete: if false;
+      }
+    }
+  }
+}

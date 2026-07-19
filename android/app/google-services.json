@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "625050349217",
+    "project_id": "b4y2-pj",
+    "storage_bucket": "b4y2-pj.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:625050349217:android:c7a8cfd8519bf904930ae0",
+        "android_client_info": {
+          "package_name": "com.example.b4y"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAPmfhpIjJcwGFSb_hSdahNjmfAE9NuLd8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
