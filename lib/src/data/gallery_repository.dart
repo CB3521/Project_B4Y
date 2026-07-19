@@ -39,16 +39,14 @@ class FirestoreGalleryRepository implements GalleryRepository {
   @override
   Stream<List<GalleryPhoto>> watchAllPhotos({required String userId}) async* {
     await for (final snapshot in _photos.snapshots()) {
-      final reactions = await _userReactions(
-        firestore,
-        'gallery_photos',
-        userId,
-      );
       final photos = await Future.wait(
         snapshot.docs.map((doc) async {
           return _photoFromSnapshot(
             doc,
-            isLiked: reactions.contains(doc.reference.path),
+            // Do not make the gallery listing depend on the collection-group
+            // reaction lookup. Native Firestore rejects that query on some
+            // platforms; liking still works through toggleLike().
+            isLiked: false,
           );
         }),
       );
@@ -67,17 +65,9 @@ class FirestoreGalleryRepository implements GalleryRepository {
         .where('targetId', isEqualTo: targetId)
         .snapshots();
     await for (final snapshot in snapshots) {
-      final reactions = await _userReactions(
-        firestore,
-        'gallery_photos',
-        userId,
-      );
       final photos = await Future.wait(
         snapshot.docs.map((doc) async {
-          return _photoFromSnapshot(
-            doc,
-            isLiked: reactions.contains(doc.reference.path),
-          );
+          return _photoFromSnapshot(doc, isLiked: false);
         }),
       );
       yield sortGalleryPhotos(photos, GallerySort.latest, limit: photos.length);
@@ -132,24 +122,6 @@ class FirestoreGalleryRepository implements GalleryRepository {
       });
     });
   }
-}
-
-Future<Set<String>> _userReactions(
-  FirebaseFirestore firestore,
-  String collection,
-  String userId,
-) async {
-  if (userId.isEmpty) return const <String>{};
-  final snapshot = await firestore
-      .collectionGroup('reactions')
-      .where(FieldPath.documentId, isEqualTo: userId)
-      .get();
-  return {
-    for (final reaction in snapshot.docs)
-      if (reaction.reference.parent.parent?.parent.id == collection &&
-          reaction.data()['liked'] == true)
-        reaction.reference.parent.parent!.path,
-  };
 }
 
 List<GalleryPhoto> sortGalleryPhotos(
