@@ -11,6 +11,7 @@ import '../../domain/b4y_models.dart';
 import '../../domain/route_segments.dart';
 import '../widgets/kakao_map_view.dart';
 import '../widgets/photo_thumb.dart';
+import '../widgets/engagement_card.dart';
 import 'tourist_spot_detail_screen.dart';
 import 'gallery_photo_viewer_screen.dart';
 
@@ -367,7 +368,11 @@ class _RoutePanelState extends ConsumerState<_RoutePanel> {
     final galleryAsync = mode == HomeContentMode.photos
         ? ref.watch(homeGalleryPhotosProvider(selectedRouteId))
         : null;
+    final missionsAsync = mode == HomeContentMode.missions
+        ? ref.watch(homeMissionsProvider(selectedRouteId))
+        : null;
     final galleryPhotos = galleryAsync?.valueOrNull ?? const <GalleryPhoto>[];
+    final missions = missionsAsync?.valueOrNull ?? const <Mission>[];
     final selectedRoute = selection == null
         ? null
         : data.routeById(selection.routeId);
@@ -500,6 +505,7 @@ class _RoutePanelState extends ConsumerState<_RoutePanel> {
                   .where((photo) => photo.routeId == route.id)
                   .toList(),
               photosLoading: galleryAsync?.isLoading == true,
+              missions: missions,
             ),
         ],
       ),
@@ -890,6 +896,7 @@ class _RouteCard extends ConsumerWidget {
     required this.selected,
     required this.photos,
     required this.photosLoading,
+    required this.missions,
   });
 
   final BusRoute route;
@@ -897,6 +904,7 @@ class _RouteCard extends ConsumerWidget {
   final bool selected;
   final List<GalleryPhoto> photos;
   final bool photosLoading;
+  final List<Mission> missions;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -972,10 +980,74 @@ class _RouteCard extends ConsumerWidget {
                   loading: photosLoading,
                 ),
               ],
+              if (mode == HomeContentMode.missions) ...[
+                const SizedBox(height: 12),
+                _RouteMissionContent(
+                  route: route,
+                  data: data,
+                  missions: missions,
+                ),
+              ],
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _RouteMissionContent extends StatelessWidget {
+  const _RouteMissionContent({
+    required this.route,
+    required this.data,
+    required this.missions,
+  });
+
+  final BusRoute route;
+  final B4ySampleData data;
+  final List<Mission> missions;
+
+  @override
+  Widget build(BuildContext context) {
+    final routeMissions = missions.where((mission) {
+      if (mission.routeId == route.id) return true;
+      if (mission.targetType != 'spot' || mission.spotId.isEmpty) {
+        return false;
+      }
+      final spot = data.spotById(mission.spotId);
+      return spot.routeIds.contains(route.id);
+    }).toList();
+
+    if (routeMissions.isEmpty) {
+      return const Text('이 노선에 등록된 미션이 없습니다.');
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '노선·관광지 미션 ${routeMissions.length}',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        for (final mission in routeMissions.take(3))
+          MissionCard(
+            mission: mission,
+            onTap: () => _openHomeMissionDetail(context, mission, route),
+            onLike: null,
+            onVerify: null,
+          ),
+        if (routeMissions.length > 3)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => context.go(
+                '/route-missions?routeId=${Uri.encodeComponent(route.id)}',
+              ),
+              child: const Text('미션 더보기'),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -1192,6 +1264,7 @@ class _RouteMapPanel extends ConsumerWidget {
             RouteDirection direction,
             RouteSegment segment,
             List<GalleryPhoto> photos,
+            Mission? mission,
           })
         >{};
     final missionSpotTargets = <String, ({String spotId, String missionId})>{};
@@ -1248,6 +1321,7 @@ class _RouteMapPanel extends ConsumerWidget {
               direction: direction,
               segment: segment,
               photos: photos,
+              mission: null,
             );
             contentMarkers.add(
               KakaoMapMarker(
@@ -1263,7 +1337,7 @@ class _RouteMapPanel extends ConsumerWidget {
       }
     } else if (mode == HomeContentMode.missions && data != null) {
       final missionRoutes = selectedRoute == null
-          ? const <BusRoute>[]
+          ? data.routes
           : [selectedRoute];
       for (final route in missionRoutes) {
         final missions = (missionsAsync?.valueOrNull ?? const <Mission>[])
@@ -1302,6 +1376,7 @@ class _RouteMapPanel extends ConsumerWidget {
               direction: direction,
               segment: segment,
               photos: const [],
+              mission: segmentMissions.first,
             );
             contentMarkers.add(
               KakaoMapMarker(
@@ -1325,16 +1400,16 @@ class _RouteMapPanel extends ConsumerWidget {
           )
           .toList();
       for (final spot in data.touristSpots) {
-        if (selectedRoute == null ||
+        if (selectedRoute != null &&
             !spot.routeIds.contains(selectedRoute.id)) {
           continue;
         }
-        if (spotMissions.isEmpty || !isValidMapPoint(spot.position)) continue;
-        final mission = spotMissions.firstWhere(
-          (candidate) => candidate.spotId == spot.id,
-          orElse: () => spotMissions.first,
-        );
+        final mission = spotMissions
+            .where((candidate) => candidate.spotId == spot.id)
+            .firstOrNull;
+        if (mission == null || !isValidMapPoint(spot.position)) continue;
         final markerId = 'home-tourist-mission:${spot.id}';
+        if (missionSpotTargets.containsKey(markerId)) continue;
         missionSpotTargets[markerId] = (spotId: spot.id, missionId: mission.id);
         contentMarkers.add(
           KakaoMapMarker(
@@ -1401,6 +1476,8 @@ class _RouteMapPanel extends ConsumerWidget {
                 target.direction,
                 target.segment,
               );
+            } else if (target.mission != null) {
+              _openHomeMissionDetail(context, target.mission!, target.route);
             } else {
               _openRouteSegmentComposer(
                 context,
@@ -1475,6 +1552,12 @@ class _RouteMapPanel extends ConsumerWidget {
                               target.direction,
                               target.segment,
                             );
+                          } else if (target.mission != null) {
+                            _openHomeMissionDetail(
+                              context,
+                              target.mission!,
+                              target.route,
+                            );
                           } else {
                             _openRouteSegmentComposer(
                               context,
@@ -1534,6 +1617,22 @@ void _openHomePhotoViewer(
         segmentLabel: '${segment.startStop.name} → ${segment.endStop.name}',
       ),
     ),
+  );
+}
+
+void _openHomeMissionDetail(
+  BuildContext context,
+  Mission mission,
+  BusRoute route,
+) {
+  if (mission.spotId.isNotEmpty) {
+    context.go(
+      '/spots/${Uri.encodeComponent(mission.spotId)}/missions/${Uri.encodeComponent(mission.id)}',
+    );
+    return;
+  }
+  context.go(
+    '/route-missions/${Uri.encodeComponent(route.id)}/${Uri.encodeComponent(mission.id)}',
   );
 }
 

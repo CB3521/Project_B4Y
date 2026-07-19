@@ -541,7 +541,7 @@ final homeMissionsProvider = StreamProvider.autoDispose
     .family<List<Mission>, String?>((ref, routeId) {
       final repository = ref.watch(engagementRepositoryProvider);
       final userId = ref.watch(authUserProvider).valueOrNull?.uid ?? '';
-      if (repository != null && routeId != null) {
+      if (repository != null) {
         return repository.watchAllMissions(userId);
       }
       final data = ref.watch(b4yDataProvider).valueOrNull;
