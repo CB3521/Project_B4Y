@@ -277,9 +277,10 @@ class _RoutePanel extends ConsumerStatefulWidget {
 
 class _RoutePanelState extends ConsumerState<_RoutePanel> {
   void _openSearch() {
+    final mode = ref.read(homeContentModeProvider);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => _HomeSearchScreen(data: widget.data),
+        builder: (context) => _HomeSearchScreen(data: widget.data, mode: mode),
       ),
     );
   }
@@ -652,9 +653,10 @@ class _HomeMissionFilterSheetState extends State<_HomeMissionFilterSheet> {
 }
 
 class _HomeSearchScreen extends ConsumerStatefulWidget {
-  const _HomeSearchScreen({required this.data});
+  const _HomeSearchScreen({required this.data, required this.mode});
 
   final B4ySampleData data;
+  final HomeContentMode mode;
 
   @override
   ConsumerState<_HomeSearchScreen> createState() => _HomeSearchScreenState();
@@ -700,7 +702,12 @@ class _HomeSearchScreenState extends ConsumerState<_HomeSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentLocation = ref.watch(currentLocationProvider).valueOrNull;
+    final photos =
+        ref.watch(homeGalleryPhotosProvider(null)).valueOrNull ??
+        widget.data.galleryPhotos;
+    final missions =
+        ref.watch(homeMissionsProvider(null)).valueOrNull ??
+        widget.data.missions;
     return Scaffold(
       appBar: AppBar(title: const Text('검색')),
       body: SafeArea(
@@ -725,7 +732,9 @@ class _HomeSearchScreenState extends ConsumerState<_HomeSearchScreen> {
                 child: _HomeSearchResults(
                   query: _controller.text,
                   data: widget.data,
-                  currentLocation: currentLocation,
+                  mode: widget.mode,
+                  photos: photos,
+                  missions: missions,
                   onRouteTap: _selectRoute,
                   onSpotTap: _selectTouristSpot,
                 ),
@@ -738,47 +747,91 @@ class _HomeSearchScreenState extends ConsumerState<_HomeSearchScreen> {
   }
 }
 
-class _HomeSearchResults extends StatelessWidget {
+class _HomeSearchResults extends ConsumerWidget {
   const _HomeSearchResults({
     required this.query,
     required this.data,
-    required this.currentLocation,
+    required this.mode,
+    required this.photos,
+    required this.missions,
     required this.onRouteTap,
     required this.onSpotTap,
   });
 
   final String query;
   final B4ySampleData data;
-  final LatLng? currentLocation;
+  final HomeContentMode mode;
+  final List<GalleryPhoto> photos;
+  final List<Mission> missions;
   final ValueChanged<BusRoute> onRouteTap;
   final ValueChanged<TouristSpot> onSpotTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final normalizedQuery = _normalizeSearchText(query);
     if (normalizedQuery.isEmpty) {
       return const Center(child: Text('검색어를 입력해 주세요.'));
     }
 
-    final routeMatches = _routeMatchesNearLocation(
+    final regionalRoutes = ref
+        .watch(regionalRouteSearchProvider(normalizedQuery))
+        .valueOrNull;
+    final routeMatches = _routeMatches(
       data: data,
       query: normalizedQuery,
-      currentLocation: currentLocation,
+      routes: regionalRoutes,
     );
-    final spotMatches = data.touristSpots
-        .where(
-          (spot) => _normalizeSearchText(spot.name).contains(normalizedQuery),
-        )
-        .toList();
+    final spotMatches = mode == HomeContentMode.tourist
+        ? data.touristSpots.where((spot) {
+            return _normalizeSearchText(spot.name).contains(normalizedQuery) ||
+                _normalizeSearchText(spot.address).contains(normalizedQuery);
+          }).toList()
+        : const <TouristSpot>[];
+    final photoMatches = mode == HomeContentMode.photos
+        ? photos.where((photo) {
+            final spot = _spotForId(data, photo.spotId);
+            final route = _routeForId(data, photo.routeId);
+            return _normalizeSearchText(
+                  photo.description,
+                ).contains(normalizedQuery) ||
+                _normalizeSearchText(
+                  spot?.name ?? '',
+                ).contains(normalizedQuery) ||
+                _normalizeSearchText(
+                  route?.number ?? '',
+                ).contains(normalizedQuery);
+          }).toList()
+        : const <GalleryPhoto>[];
+    final missionMatches = mode == HomeContentMode.missions
+        ? missions.where((mission) {
+            final spot = _spotForId(
+              data,
+              mission.spotId.isNotEmpty ? mission.spotId : mission.targetId,
+            );
+            final route = _routeForId(data, mission.routeId);
+            return _normalizeSearchText(
+                  mission.title,
+                ).contains(normalizedQuery) ||
+                _normalizeSearchText(
+                  spot?.name ?? mission.targetName,
+                ).contains(normalizedQuery) ||
+                _normalizeSearchText(
+                  route?.number ?? '',
+                ).contains(normalizedQuery);
+          }).toList()
+        : const <Mission>[];
 
-    if (routeMatches.isEmpty && spotMatches.isEmpty) {
+    if (routeMatches.isEmpty &&
+        spotMatches.isEmpty &&
+        photoMatches.isEmpty &&
+        missionMatches.isEmpty) {
       return const Center(child: Text('검색 결과가 없어요.'));
     }
 
     return ListView(
       children: [
         if (routeMatches.isNotEmpty) ...[
-          Text('근처 5km 노선', style: Theme.of(context).textTheme.titleMedium),
+          Text('시흥·안산 전체 노선', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           for (final match in routeMatches)
             _SearchRouteTile(
@@ -792,6 +845,42 @@ class _HomeSearchResults extends StatelessWidget {
           const SizedBox(height: 8),
           for (final spot in spotMatches)
             _SearchSpotTile(spot: spot, onTap: () => onSpotTap(spot)),
+        ],
+        if (photoMatches.isNotEmpty) ...[
+          if (routeMatches.isNotEmpty || spotMatches.isNotEmpty)
+            const SizedBox(height: 16),
+          const Text('사진'),
+          const SizedBox(height: 8),
+          for (final photo in photoMatches)
+            ListTile(
+              leading: const Icon(Icons.photo_rounded),
+              title: Text(
+                photo.description.isEmpty ? '제목 없는 사진' : photo.description,
+              ),
+              subtitle: Text(
+                _searchRelatedLabel(data, photo.spotId, photo.routeId),
+              ),
+            ),
+        ],
+        if (missionMatches.isNotEmpty) ...[
+          if (routeMatches.isNotEmpty ||
+              spotMatches.isNotEmpty ||
+              photoMatches.isNotEmpty)
+            const SizedBox(height: 16),
+          const Text('미션'),
+          const SizedBox(height: 8),
+          for (final mission in missionMatches)
+            ListTile(
+              leading: const Icon(Icons.flag_rounded),
+              title: Text(mission.title),
+              subtitle: Text(
+                _searchRelatedLabel(
+                  data,
+                  mission.spotId.isNotEmpty ? mission.spotId : mission.targetId,
+                  mission.routeId,
+                ),
+              ),
+            ),
         ],
       ],
     );
@@ -809,7 +898,7 @@ class _SearchRouteTile extends StatelessWidget {
     return ListTile(
       leading: const Icon(Icons.directions_bus_rounded),
       title: Text(match.route.number),
-      subtitle: Text('${match.route.destination} · ${match.stop.name}'),
+      subtitle: Text(match.route.destination),
       onTap: onTap,
     );
   }
@@ -836,65 +925,45 @@ class _NearbyRouteMatch {
   const _NearbyRouteMatch({required this.route, required this.stop});
 
   final BusRoute route;
-  final BusStop stop;
+  final BusStop? stop;
 }
 
 String _normalizeSearchText(String value) {
   return value.toLowerCase().replaceAll(RegExp(r'\s+'), '');
 }
 
-List<_NearbyRouteMatch> _routeMatchesNearLocation({
+List<_NearbyRouteMatch> _routeMatches({
   required B4ySampleData data,
   required String query,
-  required LatLng? currentLocation,
+  List<BusRoute>? routes,
 }) {
-  if (currentLocation == null) {
-    return const [];
-  }
-
-  const distance = Distance();
   final stopsById = {for (final stop in data.stops) stop.id: stop};
-  final nearestStopByRouteId = <String, ({BusStop stop, double distance})>{};
-
-  for (final route in data.routes) {
-    if (!_normalizeSearchText(route.number).startsWith(query)) {
-      continue;
-    }
-
-    for (final direction in route.directions) {
-      for (final stopId in direction.stopIds) {
-        final stop = stopsById[stopId];
-        if (stop == null) {
-          continue;
-        }
-
-        final stopDistance = distance(currentLocation, stop.position);
-        if (stopDistance > 5000) {
-          continue;
-        }
-
-        final previous = nearestStopByRouteId[route.id];
-        if (previous == null || stopDistance < previous.distance) {
-          nearestStopByRouteId[route.id] = (stop: stop, distance: stopDistance);
-        }
-      }
-    }
-  }
-
-  final matches = [
-    for (final route in data.routes)
-      if (nearestStopByRouteId[route.id] != null)
+  return [
+    for (final route in routes ?? data.routes)
+      if (_normalizeSearchText(route.number).contains(query))
         _NearbyRouteMatch(
           route: route,
-          stop: nearestStopByRouteId[route.id]!.stop,
+          stop:
+              route.directions.isEmpty || route.directions.first.stopIds.isEmpty
+              ? null
+              : stopsById[route.directions.first.stopIds.first],
         ),
   ];
-  matches.sort(
-    (a, b) => nearestStopByRouteId[a.route.id]!.distance.compareTo(
-      nearestStopByRouteId[b.route.id]!.distance,
-    ),
-  );
-  return matches;
+}
+
+TouristSpot? _spotForId(B4ySampleData data, String id) =>
+    data.touristSpots.where((spot) => spot.id == id).firstOrNull;
+
+BusRoute? _routeForId(B4ySampleData data, String id) =>
+    data.routes.where((route) => route.id == id).firstOrNull;
+
+String _searchRelatedLabel(B4ySampleData data, String spotId, String routeId) {
+  final spot = _spotForId(data, spotId)?.name;
+  final route = _routeForId(data, routeId)?.number;
+  return [
+    if (spot?.isNotEmpty == true) spot!,
+    if (route?.isNotEmpty == true) '${route!}번',
+  ].join(' · ');
 }
 
 class _RouteCard extends ConsumerWidget {
@@ -1004,7 +1073,7 @@ class _RouteCard extends ConsumerWidget {
   }
 }
 
-class _RouteMissionContent extends StatelessWidget {
+class _RouteMissionContent extends StatefulWidget {
   const _RouteMissionContent({
     required this.route,
     required this.data,
@@ -1016,20 +1085,30 @@ class _RouteMissionContent extends StatelessWidget {
   final List<Mission> missions;
 
   @override
+  State<_RouteMissionContent> createState() => _RouteMissionContentState();
+}
+
+class _RouteMissionContentState extends State<_RouteMissionContent> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
-    final routeMissions = missions.where((mission) {
-      if (mission.routeId == route.id) return true;
+    final routeMissions = widget.missions.where((mission) {
+      if (mission.routeId == widget.route.id) return true;
       if (mission.targetType != 'spot' || mission.spotId.isEmpty) {
         return false;
       }
-      final spot = data.spotById(mission.spotId);
-      return spot.routeIds.contains(route.id);
+      final spot = widget.data.spotById(mission.spotId);
+      return spot.routeIds.contains(widget.route.id);
     }).toList();
 
     if (routeMissions.isEmpty) {
       return const Text('이 노선에 등록된 미션이 없습니다.');
     }
 
+    final visibleMissions = _expanded
+        ? routeMissions
+        : routeMissions.take(1).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1038,21 +1117,19 @@ class _RouteMissionContent extends StatelessWidget {
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
-        for (final mission in routeMissions.take(3))
+        for (final mission in visibleMissions)
           MissionCard(
             mission: mission,
-            onTap: () => _openHomeMissionDetail(context, mission, route),
+            onTap: () => _openHomeMissionDetail(context, mission, widget.route),
             onLike: null,
             onVerify: null,
           ),
-        if (routeMissions.length > 3)
+        if (routeMissions.length > 1)
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () => context.go(
-                '/route-missions?routeId=${Uri.encodeComponent(route.id)}',
-              ),
-              child: const Text('미션 더보기'),
+              onPressed: () => setState(() => _expanded = !_expanded),
+              child: Text(_expanded ? '접기' : '더보기'),
             ),
           ),
       ],
@@ -1472,7 +1549,7 @@ class _RouteMapPanel extends ConsumerWidget {
               accentColor: marker.color,
             ),
           ...contentMarkers,
-          if (currentLocation != null && mode == HomeContentMode.tourist)
+          if (currentLocation != null)
             KakaoMapMarker(
               id: '',
               point: currentLocation,
@@ -1511,6 +1588,9 @@ class _RouteMapPanel extends ConsumerWidget {
           }
         },
         fallback: FlutterMap(
+          key: ValueKey(
+            'route-map-flutter-$mapRevision-${center.latitude}-${center.longitude}',
+          ),
           options: MapOptions(initialCenter: center, initialZoom: 12.6),
           children: [
             TileLayer(
@@ -1595,7 +1675,7 @@ class _RouteMapPanel extends ConsumerWidget {
                           : const _MissionMapMarker(),
                     ),
                   ),
-                if (currentLocation != null && mode == HomeContentMode.tourist)
+                if (currentLocation != null)
                   Marker(
                     point: currentLocation,
                     width: 42,

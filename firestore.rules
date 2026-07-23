@@ -189,6 +189,56 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /mission_groups/{groupId} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+          request.resource.data.keys().hasOnly([
+            'missionId', 'inviteCode', 'creatorUid', 'status', 'memberUids',
+            'createdAt', 'completedAt'
+          ]) &&
+          request.resource.data.missionId is string &&
+          request.resource.data.missionId.size() > 0 &&
+          request.resource.data.inviteCode is string &&
+          request.resource.data.inviteCode.size() == 6 &&
+          request.resource.data.creatorUid == request.auth.uid &&
+          request.resource.data.status == 'active' &&
+          request.resource.data.memberUids is list &&
+          request.resource.data.memberUids.size() == 1 &&
+          request.auth.uid in request.resource.data.memberUids;
+      allow update: if signedIn() &&
+          resource.data.status == 'active' &&
+          request.resource.data.missionId == resource.data.missionId &&
+          request.resource.data.inviteCode == resource.data.inviteCode &&
+          request.resource.data.creatorUid == resource.data.creatorUid &&
+          request.resource.data.memberUids is list &&
+          request.resource.data.memberUids.size() <= 10 &&
+          (request.auth.uid in resource.data.memberUids ||
+           request.auth.uid in request.resource.data.memberUids);
+      allow delete: if signedIn() && request.auth.uid in resource.data.memberUids;
+
+      match /members/{userId} {
+        allow read: if signedIn() &&
+            request.auth.uid in get(
+              /databases/$(database)/documents/mission_groups/$(groupId)
+            ).data.memberUids;
+        allow create: if signedIn() && userId == request.auth.uid &&
+            request.auth.uid in getAfter(
+              /databases/$(database)/documents/mission_groups/$(groupId)
+            ).data.memberUids &&
+            request.resource.data.keys().hasOnly([
+              'uid', 'nickname', 'verified', 'joinedAt'
+            ]) &&
+            request.resource.data.uid == request.auth.uid &&
+            request.resource.data.nickname is string &&
+            request.resource.data.nickname.size() > 0 &&
+            request.resource.data.verified == false;
+        allow update: if signedIn() && userId == request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['verified']);
+        allow delete: if signedIn() && userId == request.auth.uid;
+      }
+    }
+
     match /regional_routes/{routeId} {
       allow read: if signedIn();
       allow create, update: if validRouteCache();

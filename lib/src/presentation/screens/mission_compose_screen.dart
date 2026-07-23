@@ -44,7 +44,9 @@ class MissionComposeScreen extends ConsumerStatefulWidget {
 }
 
 class _MissionComposeScreenState extends ConsumerState<MissionComposeScreen> {
-  static const _stepTitles = ['기본 정보', '수행 정보', '사진'];
+  List<String> get _stepTitles => widget.routeOnly
+      ? const ['기본 정보', '노선 정보', '수행 정보', '사진']
+      : const ['기본 정보', '수행 정보', '사진'];
   static const _baseDifficultyTags = ['시간대가 중요해요', '날씨가 중요해요', '스마트폰 성능이 중요해요'];
   static const _missionTagOptions = [
     '#시흥',
@@ -465,26 +467,6 @@ class _MissionComposeScreenState extends ConsumerState<MissionComposeScreen> {
           enabled: widget.spotId.isEmpty,
           onTap: () => _openTargetSearch(data),
         ),
-        if (widget.routeOnly &&
-            _selectedRoute != null &&
-            _selectedDirection != null) ...[
-          const SizedBox(height: 12),
-          _RouteSegmentSection(
-            data: data,
-            route: _selectedRoute!,
-            direction: _selectedDirection!,
-            startStopId: _startStopId,
-            endStopId: _endStopId,
-            onDirectionChanged: (direction) => setState(() {
-              _selectedDirection = direction;
-              final stops = _stopsForDirection(data, direction);
-              _startStopId = stops.firstOrNull?.id;
-              _endStopId = stops.length > 1 ? stops.last.id : _startStopId;
-            }),
-            onStartChanged: (value) => setState(() => _startStopId = value),
-            onEndChanged: (value) => setState(() => _endStopId = value),
-          ),
-        ],
         if (_selectedSpot != null) ...[
           const SizedBox(height: 12),
           _SpotMapPreview(
@@ -505,86 +487,28 @@ class _MissionComposeScreenState extends ConsumerState<MissionComposeScreen> {
           onAddCustomTag: _addCustomTag,
         ),
       ],
-      1 => [
-        Text('난이도', style: Theme.of(context).textTheme.titleMedium),
-        Row(
-          children: [
-            Expanded(
-              child: Slider(
-                min: 1,
-                max: 5,
-                divisions: 4,
-                value: _difficulty.toDouble(),
-                label: '$_difficulty',
-                onChanged: (value) =>
-                    setState(() => _difficulty = value.round()),
-              ),
-            ),
-            SizedBox(
-              width: 32,
-              child: Text(
-                '$_difficulty',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-          ],
-        ),
-        _DifficultyTags(
-          includeLocation: _targetType == _MissionTargetType.spot,
-          selected: _difficultyTags,
-          onChanged: (value) => setState(() {
-            if (!_difficultyTags.add(value)) {
-              _difficultyTags.remove(value);
-            }
-          }),
-        ),
-        const SizedBox(height: 18),
-        TextField(
-          controller: _availableSeasonController,
-          readOnly: true,
-          onTap: _saving ? null : _pickAvailableDateRange,
-          decoration: const InputDecoration(
-            labelText: '미션 가능 기간',
-            hintText: '기간을 선택하세요',
-            prefixIcon: Icon(Icons.calendar_today_outlined),
-            border: OutlineInputBorder(),
+      1 when widget.routeOnly => [
+        if (_selectedRoute == null || _selectedDirection == null)
+          const Text('노선을 먼저 선택해 주세요.')
+        else
+          _RouteSegmentSection(
+            data: data,
+            route: _selectedRoute!,
+            direction: _selectedDirection!,
+            startStopId: _startStopId,
+            endStopId: _endStopId,
+            onDirectionChanged: (direction) => setState(() {
+              _selectedDirection = direction;
+              final stops = _stopsForDirection(data, direction);
+              _startStopId = stops.firstOrNull?.id;
+              _endStopId = stops.length > 1 ? stops.last.id : _startStopId;
+            }),
+            onStartChanged: (value) => setState(() => _startStopId = value),
+            onEndChanged: (value) => setState(() => _endStopId = value),
           ),
-        ),
-        const SizedBox(height: 18),
-        Text('인증 방법', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        SegmentedButton<_VerificationMethod>(
-          segments: const [
-            ButtonSegment(
-              value: _VerificationMethod.photo,
-              icon: Icon(Icons.photo_camera_outlined),
-              label: Text('사진'),
-            ),
-            ButtonSegment(
-              value: _VerificationMethod.location,
-              icon: Icon(Icons.my_location_outlined),
-              label: Text('현위치'),
-            ),
-          ],
-          selected: {_verificationMethod},
-          onSelectionChanged: (value) => setState(() {
-            _verificationMethod = value.first;
-            if (_verificationMethod == _VerificationMethod.location) {
-              _missionLocationPoint ??= _defaultMissionLocation(data);
-            }
-          }),
-        ),
-        if (_verificationMethod == _VerificationMethod.location) ...[
-          const SizedBox(height: 12),
-          _MissionLocationMapSection(
-            point: _missionLocationPoint ?? _defaultMissionLocation(data),
-            kakaoMapKey: kakaoMapKey,
-            radiusMeters: _verificationRadiusMeters,
-            onTap: () => _openMissionLocationPicker(data),
-          ),
-        ],
       ],
+      1 when !widget.routeOnly => _buildExecutionStep(data, kakaoMapKey),
+      2 when widget.routeOnly => _buildExecutionStep(data, kakaoMapKey),
       _ => [
         _MissionPhotoSection(
           imageDataUrl: _imageDataUrl,
@@ -596,6 +520,88 @@ class _MissionComposeScreenState extends ConsumerState<MissionComposeScreen> {
         ),
       ],
     };
+  }
+
+  List<Widget> _buildExecutionStep(B4ySampleData data, String kakaoMapKey) {
+    return [
+      Text('난이도', style: Theme.of(context).textTheme.titleMedium),
+      Row(
+        children: [
+          Expanded(
+            child: Slider(
+              min: 1,
+              max: 5,
+              divisions: 4,
+              value: _difficulty.toDouble(),
+              label: '$_difficulty',
+              onChanged: (value) => setState(() => _difficulty = value.round()),
+            ),
+          ),
+          SizedBox(
+            width: 32,
+            child: Text(
+              '$_difficulty',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+        ],
+      ),
+      _DifficultyTags(
+        includeLocation: _targetType == _MissionTargetType.spot,
+        selected: _difficultyTags,
+        onChanged: (value) => setState(() {
+          if (!_difficultyTags.add(value)) {
+            _difficultyTags.remove(value);
+          }
+        }),
+      ),
+      const SizedBox(height: 18),
+      TextField(
+        controller: _availableSeasonController,
+        readOnly: true,
+        onTap: _saving ? null : _pickAvailableDateRange,
+        decoration: const InputDecoration(
+          labelText: '미션 가능 기간',
+          hintText: '기간을 선택하세요',
+          prefixIcon: Icon(Icons.calendar_today_outlined),
+          border: OutlineInputBorder(),
+        ),
+      ),
+      const SizedBox(height: 18),
+      Text('인증 방법', style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      SegmentedButton<_VerificationMethod>(
+        segments: const [
+          ButtonSegment(
+            value: _VerificationMethod.photo,
+            icon: Icon(Icons.photo_camera_outlined),
+            label: Text('사진'),
+          ),
+          ButtonSegment(
+            value: _VerificationMethod.location,
+            icon: Icon(Icons.my_location_outlined),
+            label: Text('현위치'),
+          ),
+        ],
+        selected: {_verificationMethod},
+        onSelectionChanged: (value) => setState(() {
+          _verificationMethod = value.first;
+          if (_verificationMethod == _VerificationMethod.location) {
+            _missionLocationPoint ??= _defaultMissionLocation(data);
+          }
+        }),
+      ),
+      if (_verificationMethod == _VerificationMethod.location) ...[
+        const SizedBox(height: 12),
+        _MissionLocationMapSection(
+          point: _missionLocationPoint ?? _defaultMissionLocation(data),
+          kakaoMapKey: kakaoMapKey,
+          radiusMeters: _verificationRadiusMeters,
+          onTap: () => _openMissionLocationPicker(data),
+        ),
+      ],
+    ];
   }
 
   void _nextStep() {

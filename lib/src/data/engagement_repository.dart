@@ -2,6 +2,42 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../domain/b4y_models.dart';
 
+class MissionGroupMember {
+  const MissionGroupMember({
+    required this.uid,
+    required this.nickname,
+    required this.verified,
+  });
+
+  final String uid;
+  final String nickname;
+  final bool verified;
+}
+
+class MissionGroup {
+  const MissionGroup({
+    required this.id,
+    required this.missionId,
+    required this.inviteCode,
+    required this.creatorUid,
+    required this.status,
+    required this.memberUids,
+    required this.members,
+  });
+
+  final String id;
+  final String missionId;
+  final String inviteCode;
+  final String creatorUid;
+  final String status;
+  final List<String> memberUids;
+  final List<MissionGroupMember> members;
+
+  bool get isCompleted =>
+      status == 'completed' ||
+      (members.isNotEmpty && members.every((member) => member.verified));
+}
+
 abstract class EngagementRepository {
   Stream<List<Mission>> watchAllMissions(String userId);
 
@@ -64,6 +100,30 @@ abstract class EngagementRepository {
   Future<void> toggleMissionLike(String missionId, String userId);
 
   Future<void> toggleMissionVerification(String missionId, String userId);
+
+  Future<MissionGroup> createMissionGroup({
+    required String missionId,
+    required String userId,
+    required String nickname,
+  });
+
+  Stream<MissionGroup?> watchMissionGroup(String missionId, String userId);
+
+  Future<MissionGroup> joinMissionGroup({
+    required String inviteCode,
+    required String userId,
+    required String nickname,
+  });
+
+  Future<void> toggleMissionGroupVerification({
+    required String groupId,
+    required String userId,
+  });
+
+  Future<void> leaveMissionGroup({
+    required String groupId,
+    required String userId,
+  });
 }
 
 class FirestoreEngagementRepository implements EngagementRepository {
@@ -75,6 +135,8 @@ class FirestoreEngagementRepository implements EngagementRepository {
       firestore.collection('reviews');
   CollectionReference<Map<String, dynamic>> get _missions =>
       firestore.collection('missions');
+  CollectionReference<Map<String, dynamic>> get _missionGroups =>
+      firestore.collection('mission_groups');
 
   @override
   Stream<List<Mission>> watchAllMissions(String userId) async* {
@@ -385,6 +447,210 @@ class FirestoreEngagementRepository implements EngagementRepository {
       });
     });
   }
+
+  @override
+  Future<MissionGroup> createMissionGroup({
+    required String missionId,
+    required String userId,
+    required String nickname,
+  }) async {
+    for (var attempt = 0; attempt < 5; attempt += 1) {
+      final code = _newMissionGroupCode();
+      final existing = await _missionGroups
+          .where('inviteCode', isEqualTo: code)
+          .limit(1)
+          .get();
+      if (existing.docs.isNotEmpty) continue;
+      final group = _missionGroups.doc();
+      final member = group.collection('members').doc(userId);
+      final batch = firestore.batch();
+      batch.set(group, {
+        'missionId': missionId,
+        'inviteCode': code,
+        'creatorUid': userId,
+        'status': 'active',
+        'memberUids': [userId],
+        'createdAt': FieldValue.serverTimestamp(),
+        'completedAt': null,
+      });
+      batch.set(member, {
+        'uid': userId,
+        'nickname': nickname.trim(),
+        'verified': false,
+        'joinedAt': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+      return MissionGroup(
+        id: group.id,
+        missionId: missionId,
+        inviteCode: code,
+        creatorUid: userId,
+        status: 'active',
+        memberUids: [userId],
+        members: [
+          MissionGroupMember(
+            uid: userId,
+            nickname: nickname.trim(),
+            verified: false,
+          ),
+        ],
+      );
+    }
+    throw StateError('친구 초대 코드를 만들지 못했어요. 다시 시도해 주세요.');
+  }
+
+  @override
+  Stream<MissionGroup?> watchMissionGroup(
+    String missionId,
+    String userId,
+  ) async* {
+    if (userId.isEmpty) {
+      yield null;
+      return;
+    }
+    await for (final snapshot
+        in _missionGroups
+            .where('memberUids', arrayContains: userId)
+            .snapshots()) {
+      final group = snapshot.docs.where((doc) {
+        final data = doc.data();
+        return data['missionId'] == missionId && data['status'] == 'active';
+      }).firstOrNull;
+      if (group == null) {
+        yield null;
+        continue;
+      }
+      yield await _missionGroupFromSnapshot(group);
+    }
+  }
+
+  @override
+  Future<MissionGroup> joinMissionGroup({
+    required String inviteCode,
+    required String userId,
+    required String nickname,
+  }) async {
+    final snapshot = await _missionGroups
+        .where('inviteCode', isEqualTo: inviteCode.trim().toUpperCase())
+        .limit(1)
+        .get();
+    if (snapshot.docs.isEmpty) {
+      throw StateError('초대 코드를 찾을 수 없어요.');
+    }
+    final group = snapshot.docs.single;
+    final data = group.data();
+    final members = List<String>.from(data['memberUids'] as List? ?? const []);
+    if (data['status'] != 'active') throw StateError('이미 완료된 그룹이에요.');
+    if (members.contains(userId)) return _missionGroupFromSnapshot(group);
+    if (members.length >= 10) throw StateError('그룹 인원이 가득 찼어요.');
+    final member = group.reference.collection('members').doc(userId);
+    final batch = firestore.batch();
+    batch.update(group.reference, {
+      'memberUids': [...members, userId],
+    });
+    batch.set(member, {
+      'uid': userId,
+      'nickname': nickname.trim(),
+      'verified': false,
+      'joinedAt': FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
+    return _missionGroupFromSnapshot(group);
+  }
+
+  @override
+  Future<void> toggleMissionGroupVerification({
+    required String groupId,
+    required String userId,
+  }) async {
+    final group = _missionGroups.doc(groupId);
+    final member = group.collection('members').doc(userId);
+    await firestore.runTransaction((transaction) async {
+      final groupSnapshot = await transaction.get(group);
+      final memberSnapshot = await transaction.get(member);
+      final data = groupSnapshot.data() ?? const <String, dynamic>{};
+      final current = memberSnapshot.data()?['verified'] == true;
+      if (!current) {
+        final memberUids = List<String>.from(
+          data['memberUids'] as List? ?? const [],
+        );
+        final memberSnapshots = <DocumentSnapshot<Map<String, dynamic>>>[];
+        for (final uid in memberUids.where((uid) => uid != userId)) {
+          memberSnapshots.add(
+            await transaction.get(group.collection('members').doc(uid)),
+          );
+        }
+        final allVerified = memberSnapshots.every(
+          (snapshot) => snapshot.data()?['verified'] == true,
+        );
+        transaction.update(member, {'verified': true});
+        if (allVerified) {
+          transaction.update(group, {
+            'status': 'completed',
+            'completedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      } else if (data['status'] == 'completed') {
+        transaction.update(member, {'verified': false});
+        transaction.update(group, {'status': 'active', 'completedAt': null});
+      } else {
+        transaction.update(member, {'verified': false});
+      }
+    });
+  }
+
+  @override
+  Future<void> leaveMissionGroup({
+    required String groupId,
+    required String userId,
+  }) async {
+    final group = _missionGroups.doc(groupId);
+    final member = group.collection('members').doc(userId);
+    await firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(group);
+      final data = snapshot.data() ?? const <String, dynamic>{};
+      if (data['status'] == 'completed') {
+        throw StateError('완료된 그룹에서는 나갈 수 없어요.');
+      }
+      final members = List<String>.from(data['memberUids'] as List? ?? const [])
+        ..remove(userId);
+      transaction.delete(member);
+      if (members.isEmpty) {
+        transaction.delete(group);
+      } else {
+        transaction.update(group, {'memberUids': members});
+      }
+    });
+  }
+
+  Future<MissionGroup> _missionGroupFromSnapshot(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+  ) async {
+    final data = snapshot.data() ?? const <String, dynamic>{};
+    final memberSnapshot = await snapshot.reference.collection('members').get();
+    return MissionGroup(
+      id: snapshot.id,
+      missionId: data['missionId'] as String? ?? '',
+      inviteCode: data['inviteCode'] as String? ?? '',
+      creatorUid: data['creatorUid'] as String? ?? '',
+      status: data['status'] as String? ?? 'active',
+      memberUids: List<String>.from(data['memberUids'] as List? ?? const []),
+      members: memberSnapshot.docs
+          .map(
+            (doc) => MissionGroupMember(
+              uid: doc.id,
+              nickname: doc.data()['nickname'] as String? ?? '',
+              verified: doc.data()['verified'] == true,
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+String _newMissionGroupCode() {
+  final seed = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+  return seed.substring(seed.length - 6).toUpperCase().padLeft(6, '0');
 }
 
 List<Review> sortReviews(Iterable<Review> reviews) {
@@ -430,15 +696,20 @@ Future<Map<String, Map<String, dynamic>>> _userReactions(
   String userId,
 ) async {
   if (userId.isEmpty) return const {};
-  final snapshot = await firestore
-      .collectionGroup('reactions')
-      .where(FieldPath.documentId, isEqualTo: userId)
-      .get();
-  return {
-    for (final reaction in snapshot.docs)
-      if (reaction.reference.parent.parent?.parent.id == collection)
-        reaction.reference.parent.parent!.path: reaction.data(),
-  };
+  try {
+    final snapshot = await firestore
+        .collectionGroup('reactions')
+        .where(FieldPath.documentId, isEqualTo: userId)
+        .get();
+    return {
+      for (final reaction in snapshot.docs)
+        if (reaction.reference.parent.parent?.parent.id == collection)
+          reaction.reference.parent.parent!.path: reaction.data(),
+    };
+  } on FirebaseException {
+    // A reaction read failure must not prevent the parent content from loading.
+    return const {};
+  }
 }
 
 Future<List<String>> _reviewPhotos(

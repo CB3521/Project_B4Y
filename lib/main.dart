@@ -87,9 +87,7 @@ GoRouter _createRouter({required String initialLocation}) {
           ),
           GoRoute(
             path: 'missions',
-            builder: (context, state) => MissionScreen(
-              touristOnly: true,
-            ),
+            builder: (context, state) => MissionScreen(touristOnly: true),
           ),
           GoRoute(
             path: 'route-missions',
@@ -103,6 +101,12 @@ GoRouter _createRouter({required String initialLocation}) {
             builder: (context, state) => MissionDetailScreen(
               routeId: state.pathParameters['routeId']!,
               missionId: state.pathParameters['missionId']!,
+            ),
+          ),
+          GoRoute(
+            path: 'mission-groups/join',
+            builder: (context, state) => MissionGroupJoinScreen(
+              missionId: state.uri.queryParameters['missionId'] ?? '',
             ),
           ),
           GoRoute(

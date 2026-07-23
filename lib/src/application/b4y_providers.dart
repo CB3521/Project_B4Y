@@ -522,19 +522,36 @@ final myReviewsProvider = StreamProvider<List<Review>>((ref) {
 });
 
 final missionsForSpotProvider = StreamProvider.autoDispose
-    .family<List<Mission>, String>((ref, spotId) {
+    .family<List<Mission>, String>((ref, spotId) async* {
       final repository = ref.watch(engagementRepositoryProvider);
-      final userId = ref.watch(authUserProvider).valueOrNull?.uid ?? '';
-      return repository?.watchMissions(spotId, userId) ??
-          Stream.value(const <Mission>[]);
+      final user = await ref.watch(authUserProvider.future);
+      if (repository == null || user == null) {
+        yield const <Mission>[];
+        return;
+      }
+      yield* repository.watchMissions(spotId, user.uid);
     });
 
 final missionsForRouteProvider = StreamProvider.autoDispose
-    .family<List<Mission>, String>((ref, routeId) {
+    .family<List<Mission>, String>((ref, routeId) async* {
       final repository = ref.watch(engagementRepositoryProvider);
-      final userId = ref.watch(authUserProvider).valueOrNull?.uid ?? '';
-      return repository?.watchMissionsForRoute(routeId, userId) ??
-          Stream.value(const <Mission>[]);
+      final user = await ref.watch(authUserProvider.future);
+      if (repository == null || user == null) {
+        yield const <Mission>[];
+        return;
+      }
+      yield* repository.watchMissionsForRoute(routeId, user.uid);
+    });
+
+final missionGroupProvider = StreamProvider.autoDispose
+    .family<MissionGroup?, String>((ref, missionId) async* {
+      final repository = ref.watch(engagementRepositoryProvider);
+      final user = await ref.watch(authUserProvider.future);
+      if (repository == null || user == null || user.isAnonymous) {
+        yield null;
+        return;
+      }
+      yield* repository.watchMissionGroup(missionId, user.uid);
     });
 
 final homeMissionsProvider = StreamProvider.autoDispose
@@ -564,33 +581,33 @@ final regionalRouteSearchProvider =
       }
 
       final cacheRepository = ref.watch(routeCacheRepositoryProvider);
-      var cachedRoutes = const <BusRoute>[];
-      try {
-        cachedRoutes =
-            await cacheRepository?.searchRoutes(normalizedQuery) ??
-            const <BusRoute>[];
-      } on Object {
-        cachedRoutes = const <BusRoute>[];
-      }
-      if (cachedRoutes.isNotEmpty) {
-        return cachedRoutes;
-      }
-
       final keys = await ref.watch(apiKeysProvider.future);
       final data = ref.watch(b4yDataProvider).valueOrNull;
-      final routes = await ApiBackedB4yRepository(keys: keys)
-          .searchRegionalRoutes(
-            normalizedQuery,
-            fallbackRoutes: data?.routes ?? const [],
-          );
+      List<BusRoute> routes = const <BusRoute>[];
+      try {
+        routes = await ApiBackedB4yRepository(keys: keys).searchRegionalRoutes(
+          normalizedQuery,
+          fallbackRoutes: data?.routes ?? const [],
+        );
+      } on Object {
+        routes = const <BusRoute>[];
+      }
       if (routes.isNotEmpty) {
         try {
           await cacheRepository?.cacheRoutes(routes);
         } on Object {
           // Route search should still work even when Firestore cache is offline.
         }
+        return routes;
       }
-      return routes;
+
+      // Use the cache only when the API is unavailable or returned no results.
+      try {
+        return await cacheRepository?.searchRoutes(normalizedQuery) ??
+            const <BusRoute>[];
+      } on Object {
+        return const <BusRoute>[];
+      }
     });
 
 final myMissionsProvider = StreamProvider<List<Mission>>((ref) {
